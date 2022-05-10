@@ -5,7 +5,6 @@ import binascii
 
 
 def handle_connection(data: bytes, connection: socket.socket, connections_dict: dict, main_con):
-
     cipher = connections_dict[connection]
 
     # First stage: Decrypt Packet & convert to bytes
@@ -17,13 +16,13 @@ def handle_connection(data: bytes, connection: socket.socket, connections_dict: 
 
     #server_ip = '172.217.171.238'
 
-    client_pkt = IP(decrypted_data)
+    client_pkt = Ether(decrypted_data)
     client_pkt[IP].src = server_ip
 
     client_pkt.show()
 
     # Third stage: Send packet & receive packet
-    server_pkt = sr1(client_pkt)
+    server_pkt = sr1(client_pkt, iface="Ethernet")
 
     # Fourth stage: Encrypt packet & send to client
     server_pkt = raw(server_pkt)
@@ -40,8 +39,8 @@ def main(args: list):
     print("Running server...")
 
     # Get the server port
-    port = int(args[1])
-    key = args[2]
+    port = 1234
+    key = "amongus"
 
     # Open Socket
     main_con = socket.socket()

@@ -1,27 +1,31 @@
 from AES import AESCipher
-import socket, sys
+import threading
 import binascii
 from scapy.all import *
 
 
-def main(args: list):
-    port = int(args[1])
-    key = args[2]
+def recv_packets():
+    while True:
+        print("Waiting for packet...")
+        data = main_con.recv(1500)  # receive the packet from the server
+        """
+        if len(data) % 16 != 0:
+            continue
+        """
+        decrypted_data = cipher.decrypt(data)
+        decrypted_data = binascii.unhexlify(bytes(decrypted_data, encoding='utf-8'))
 
-    main_con = socket.socket()  # create tcp socket
-    main_con.connect(('localhost', port))  # connect to main server
+        pkt = Ether(decrypted_data)
+        pkt.show()
 
-    dest_ip = '172.217.171.238'
+        sendp(pkt, iface="coolVPN")
 
-    packet = IP(dst=dest_ip)/ICMP(type='echo-request')/Raw(b'Hello Yehuda!')
-    packet = raw(packet)
 
+def on_packet_sniff(pkt):
+    packet = bytes(pkt)
 
     # convert bytes into string & remove the b and single quotes
     packet = str(binascii.hexlify(packet))[2:-1]
-
-    # create cipher
-    cipher = AESCipher(key=key)
 
     # encrypt packet
     encrypted_packet = cipher.encrypt(packet)
@@ -29,16 +33,14 @@ def main(args: list):
     # send encrypted packet
     main_con.send(encrypted_packet.encode(encoding='utf-8'))
 
-    data = main_con.recv(2048)  # receive the packet from the server
 
-    decrypted_data = cipher.decrypt(data)
-    decrypted_data = binascii.unhexlify(bytes(decrypted_data, encoding='utf-8'))
+port = 1234
+key = "amongus"
+cipher = AESCipher(key=key)
 
-    pkt = IP(decrypted_data)
-    pkt.show()
+main_con = socket.socket()  # create tcp socket
+main_con.connect(('localhost', port))  # connect to main server
 
-    main_con.close()
+threading.Thread(target=recv_packets).start()
 
-
-if __name__ == "__main__":
-    main(sys.argv)
+sniff(prn=on_packet_sniff, iface="coolVPN")
