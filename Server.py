@@ -1,98 +1,125 @@
-import socket, select, sys
+import threading
 from scapy.all import *
-from AES import AESCipher
 import binascii
+import json
+import rsa
 
 
-def handle_connection(data: bytes, connection: socket.socket, connections_dict: dict, main_con):
-    cipher = connections_dict[connection]
+# Receive from client
+def handle_connection():
 
-    # First stage: Decrypt Packet & convert to bytes
-    decrypted_data = cipher.decrypt(data)
-    decrypted_data = binascii.unhexlify(bytes(decrypted_data, encoding='utf-8'))
+    try:
+        client_pkt = Ether(data)
 
-    # Second stage: Change source IP
-    server_ip = socket.gethostbyname(socket.gethostname())
+        if Ether in client_pkt:
+            client_pkt[Ether].src = get_if_hwaddr(interface)
+            client_pkt[Ether].dst = router_mac
+            client_pkt[Ether].chksum = None
 
-    #server_ip = '172.217.171.238'
+        if IP in client_pkt:
+            client_pkt[IP].chksum = None
+            client_pkt[IP].src = get_if_addr(interface)
 
-    client_pkt = Ether(decrypted_data)
-    client_pkt[IP].src = server_ip
+        if UDP in client_pkt:
+            client_pkt[UDP].chksum = None
 
-    client_pkt.show()
+        if TCP in client_pkt:
+            client_pkt[TCP].chksum = None
 
-    # Third stage: Send packet & receive packet
-    server_pkt = sr1(client_pkt, iface="Ethernet")
+        #client_pkt.show()
 
-    # Fourth stage: Encrypt packet & send to client
-    server_pkt = raw(server_pkt)
-
-    # convert bytes into string & remove the b and single quotes
-    server_pkt_str = str(binascii.hexlify(server_pkt))[2:-1]
-
-    encrypted_packet = cipher.encrypt(server_pkt_str)
-
-    connection.send(encrypted_packet.encode(encoding='utf-8'))
+        # Third stage: Send packet to WWW
+        sendp(client_pkt, iface=interface, verbose=False)
+    except Exception as e:
+        print(f"[Client -> Server]: {e}")
 
 
-def main(args: list):
-    print("Running server...")
+# Function that receives all incoming packets from WWW
+def recv_pkts(pkt):
 
-    # Get the server port
-    port = 1234
-    key = "amongus"
+    if IP not in pkt:
+        return
 
-    # Open Socket
-    main_con = socket.socket()
-    main_con.bind(("localhost", port))
-    main_con.listen(5)
-    main_con.setblocking(False)
+    if pkt[IP].src == get_if_addr(interface):
+        return
 
-    # Dictionary containing sockets as keys & shared crypto keys as values
-    connections_dict = {main_con: None}
+    encrypted_packet = bytes(pkt)
+    con.send(encrypted_packet)
 
-    print("Server has been started!")
 
-    # Start receiving connections & dealing with them
+
+print("Running server...")
+
+# Init Parameters for client
+with open('params.json') as f:
+    params = json.load(f)
+
+port = params["port"]
+server_ip = params["server_ip"]
+interface = params["main_interface"]
+public_key_modulus = params["public_key_modulus"]
+public_key_base = params["public_key_base"]
+
+router_ip = conf.route.route("0.0.0.0")[2]
+router_mac = srp1(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=router_ip))[ARP].hwsrc
+
+# Open Socket
+main_con = socket.socket()
+main_con.bind((server_ip, port))
+main_con.listen(5)
+
+print("Server has been started!")
+
+# Start receiving connection & dealing with them
+while True:
+
+    # Wait for a connection
+    con, addr = main_con.accept()
+
+    # ----RSA Authentication Start----
+    (rsa_public_key, rsa_private_key) = rsa.newkeys(512)
+
+    # Send Public key to client
+    con.send(rsa_public_key.save_pkcs1(format='DER'))
+    print("RSA: Sent public key to client...")
+
+    # Sign digital signature & send to client
+    message = "AMONGUS".encode()
+    signature = rsa.sign(message, rsa_private_key, 'SHA-1')
+
+    con.send(signature)
+    print("RSA: Sent digital signature to client...")
+
+    # Wait for answer
+    success = con.recv(1500).decode()
+    print("RSA: Received answer from client...")
+    if not success:
+        print("RSA: Client closed connection")
+        con.close()
+        continue
+
+    print("RSA: Client Successfully Connected!")
+    # ----RSA Authentication End----
+
+    # ----Diffie-Hellman Key Exchange Start----
+    secret_number = random.randint(100, 5000)
+
+    client_calc = int(con.recv(1500).decode())
+    print("DH: Received Calculation from Client")
+
+    con.send(str(pow(public_key_base, secret_number) % public_key_modulus).encode())
+    print("DH: Sent Calculation to Client")
+
+    key = pow(client_calc, secret_number) % public_key_modulus
+    print(key)
+
+    # ---- Diffie-Hellman Key Exchange End----
+
+    # Start thread that will receive incoming packets from WWW
+    thread = threading.Thread(target=lambda: sniff(prn=recv_pkts, iface=interface))
+    thread.start()
+
+    # When getting packet from client, send it to WWW
     while True:
-        socket_list = connections_dict.keys()
-        read_sockets, write_sockets, error_sockets = select.select(socket_list, [], [])
-
-        for con in read_sockets:
-
-            # Connection is new and we need to add it to the list
-            if con == main_con:
-                print("A new connection has been established")
-                new_connection, addr = con.accept()
-                # Usually the key is generated here, however for testings' sake
-                # we will pre define it
-                connections_dict[new_connection] = AESCipher(key=key)
-
-            # Connection is not new
-            else:
-                try:
-                    data = con.recv(2048)
-                    print("Received new data")
-                except ConnectionResetError:
-                    con.close()
-                    break
-
-                # Connection closed - close the socket
-                if not data:
-                    con.close()
-                    del connections_dict[con]
-                    print("A connection has been closed")
-
-                # Connection is still running - handle connection
-                else:
-                    handle_connection(data=data,
-                                      connection=con,
-                                      connections_dict=connections_dict, main_con=main_con)
-
-
-if __name__ == "__main__":
-    # Arguments:
-    # 1) The port of the server
-    # 2) The key
-
-    main(sys.argv)
+        data = con.recv(1500)
+        handle_connection()
