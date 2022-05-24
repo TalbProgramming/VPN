@@ -50,8 +50,8 @@ def recv_pkts(pkt):
 
 print("Running server...")
 
-# Init Parameters for client
-with open('params.json') as f:
+# Init Parameters
+with open('Server/params_server.json') as f:
     params = json.load(f)
 
 port = params["port"]
