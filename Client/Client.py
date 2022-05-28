@@ -6,6 +6,11 @@ import os
 from elevate import elevate
 
 
+from cryptography.fernet import Fernet
+import base64
+#  encryption research paper - https://arxiv.org/pdf/1704.08688.pdf
+#  cryptography library information - https://cryptography.io/en/latest/
+#  creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 def recv_packets():
     while True:
         data = main_con.recv(1500)  # receive the packet from the server
@@ -36,6 +41,38 @@ def recv_packets():
 def on_packet_sniff(pkt):
     main_con.send(bytes(pkt))
 
+
+def encrypt_packet(pkt, key,  func: str):
+    #  encrypting a packet using several encryption functions
+
+    # convert scapy packet to string
+    s_pkt = str(pkt)
+
+    # convert diffie-hellman key into a valid fernet key
+    f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
+    # use a function on the key
+    final_key = Fernet(f_key)
+
+    token = final_key.encrypt(s_pkt)
+    # token = encrypted packet
+
+    # decrypt the packet
+    decrypted_pkt = final_key.decrypt(token)
+
+    # convert string packet bto bytes
+    b_pkt = bytes(s_pkt, "utf-8")
+
+
+    #  <>
+    # NOREL____ try all of them and choose which one works best
+    # after u choose one we will remove the options and just use one
+    #  <>
+
+    # fernet encryotion
+    new_key = bytes(str(key)[:44], encoding="utf-8")
+
+    fkey = Fernet(key)
+    token = fkey.encrypt(pkt.encode("utf-8"))
 
 def on_connect(server_ip, server_port):
     """
