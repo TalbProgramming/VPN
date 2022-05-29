@@ -42,37 +42,42 @@ def on_packet_sniff(pkt):
     main_con.send(bytes(pkt))
 
 
-def encrypt_packet(pkt, key,  func: str):
-    #  encrypting a packet using several encryption functions
+def encrypt_packet(pkt, key):
+    # Encrypting a packet using the cryptography.fernet library
+    # Bibliography
+    # Cryptography library information - https://cryptography.io/en/latest/
+    # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
+    """
+    <<< IF NEEDED FUNCTIONS>>>
 
     # convert scapy packet to string
     s_pkt = str(pkt)
 
-    # convert diffie-hellman key into a valid fernet key
-    f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
-    # use a function on the key
-    final_key = Fernet(f_key)
-
-    token = final_key.encrypt(s_pkt)
-    # token = encrypted packet
-
-    # decrypt the packet
-    decrypted_pkt = final_key.decrypt(token)
-
     # convert string packet bto bytes
     b_pkt = bytes(s_pkt, "utf-8")
+    """
+    # Convert diffie-hellman key into a valid fernet key
+    f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
+
+    # Converting the key into a cryptography.fernet object
+    final_key = Fernet(f_key)
+
+    # Encrypting the packet
+    encrypted_packet = final_key.encrypt(pkt)
+    return encrypted_packet
 
 
-    #  <>
-    # NOREL____ try all of them and choose which one works best
-    # after u choose one we will remove the options and just use one
-    #  <>
+def decrypt_packet(enc_pkt, key):
+    # Convert diffie-hellman key into a valid fernet key
+    f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
 
-    # fernet encryotion
-    new_key = bytes(str(key)[:44], encoding="utf-8")
+    # Converting the key into a cryptography.fernet object
+    final_key = Fernet(f_key)
 
-    fkey = Fernet(key)
-    token = fkey.encrypt(pkt.encode("utf-8"))
+    # Decrypt the packet back to bytes
+    decrypted_packet = final_key.decrypt(enc_pkt)
+    return decrypted_packet
+
 
 def on_connect(server_ip, server_port):
     """
