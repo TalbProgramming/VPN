@@ -6,7 +6,7 @@ import os
 from elevate import elevate
 from cryptography.fernet import Fernet
 import base64
-
+import GUI
 
 def recv_packets():
     while True:
@@ -200,18 +200,25 @@ def start_cli():
 
 
 def start_client():
+    # start the gui
+    GUI.start_gui()
+    # after the user closes the gui, start CLI and questions
+    # clear screen
     os.system("cls")
 
+    # cli loop
     while True:
         print("[CLI] Hello, welcome to Tal & Norel's VPN")
         print("[CLI] Please choose a mode:")
         print("  (1) Public VPN (Connect to Internet)")
         print("  (2) Custom VPN (Connect to Custom Server)")
 
+        # user has to choose between connecting to a custom vpn or to a public vpn
         while True:
             vpn_type = input(">")
             if vpn_type == "1" or vpn_type == "2":
                 break
+            # if the user did not choose a valid answer
             else:
                 print("[CLI] Please Choose a Displayed Answer:")
 
