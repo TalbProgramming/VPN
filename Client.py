@@ -1,3 +1,4 @@
+# import all the relevant packages
 import threading
 from scapy.all import *
 import json
@@ -8,10 +9,15 @@ from cryptography.fernet import Fernet
 import base64
 import GUI
 
+
 def recv_packets():
+    # a function that receives the packets from the server and sends them back to the interface
     while True:
+        # receive the packet
         data = main_con.recv(1500)  # receive the packet from the server
+        # decrypt the packet
         data = decrypt_packet(data, dif_hel_key, encryption_type)  # decrypt the received packet
+        # change packet variables so it sends it to the interface from the computer
         try:
             pkt = Ether(data)
 
@@ -30,13 +36,18 @@ def recv_packets():
             if TCP in pkt:
                 pkt[TCP].chksum = None
 
+            # send the packet to the interface
             sendp(pkt, iface=vpn_interface, verbose=False)
+        # if there is an error
         except Exception as e:
+            # print the exception
             print(f"[Server -> Client] {e}")
+            # return to the start of the loop
             continue
 
 
 def on_packet_sniff(pkt):
+    # a function that sends the server the packets that the client sniffs from the interface
     # sent encrypted packet
     main_con.send(encrypt_packet(bytes(pkt), dif_hel_key, encryption_type))
 
@@ -83,6 +94,9 @@ def encrypt_packet(pkt, key, enc_type):
 
 def decrypt_packet(enc_pkt, key, enc_type):
     # a function for decrypting a packet
+    # Cryptography library information - https://cryptography.io/en/latest/
+    # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
+
     decrypted_packet = b""
 
     if enc_type == "Strong":
@@ -109,15 +123,12 @@ def decrypt_packet(enc_pkt, key, enc_type):
 
 
 def on_connect(server_ip, server_port):
-    """
-        Function that handles what occurs once the user
-        presses "Connect" on GUI and until the client closes
-    """
-    global cipher
-
+    # a function responsible for the connection with the server
     # Connect to server
     try:
+        # connect to the vpn server
         main_con.connect((server_ip, server_port))
+    # if there is an error
     except:
         print("[Client] Failed to connect to the given IP or Port. Restarting Client...\n\n")
         return False
@@ -189,7 +200,9 @@ def on_connect(server_ip, server_port):
 def start_cli():
     print("\n\n[CLI] Please enter a command or type 'help' for a list of commands")
     while True:
+        # ask for input
         command = input(">")
+        # if the command is not valid
         if command not in commands:
             print("[CLI] Command not found. Listing all commands:")
             commands["help"]()
@@ -249,12 +262,15 @@ def start_client():
         print("Weak - low security but better internet connection.")
         while True:
             enc_t = input("Which one do you prefer? (W/S)")
+            # if the user chose the weak encryption
             if enc_t == "W" or enc_t == "w":
                 encryption_type = "Weak"
                 continue
+            # if the user chose the strong encryption
             elif enc_t == "S" or enc_t == "s":
                 encryption_type = "Strong"
                 continue
+            # if the user did not choose a valid answer
             else:
                 print("Answer not valid...")
 
@@ -298,7 +314,7 @@ def command_help(desc=False):
 
     # ----------------------- Begin Command -----------------------
     print("[CLI] Listing all commands:")
-    for command,func in commands.items():
+    for command, func in commands.items():
         print("\n\n------------------------------")
         print(func(desc=True))
         print("------------------------------\n\n")
@@ -311,6 +327,7 @@ elevate()
 with open('Client/params_client.json') as f:
     params = json.load(f)
 
+# extract to variables from the params.json
 server_port = params["port"]
 server_ip = params["server_ip"]
 vpn_interface = params["vpn_interface"]
@@ -318,6 +335,7 @@ main_interface = params["main_interface"]
 public_key_modulus = params["public_key_modulus"]
 public_key_base = params["public_key_base"]
 
+# router addresses
 router_ip = conf.route.route("0.0.0.0")[2]
 router_mac = srp1(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=router_ip))[ARP].hwsrc
 vpn_router_mac = "70:32:17:69:69:69"
@@ -327,8 +345,11 @@ vpn_mac = get_if_hwaddr(vpn_interface)
 encryption_type = "Strong"  # the default is Strong but you can change it
 dif_hel_key = 0  # public variable for the diffie hellman key
 
+# the server-client socket
 main_con = socket.socket()
+# threads dictionary
 threads = {"recv": None, "sniff": None}  # respective keyword for each thread
+# cli commands dictionary
 commands = {"exit": command_exit, "help": command_help}
 
 # Start client
