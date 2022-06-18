@@ -8,15 +8,20 @@ from elevate import elevate
 from cryptography.fernet import Fernet
 import base64
 import GUI
+import atexit
 
 
 def recv_packets():
     # a function that receives the packets from the server and sends them back to the interface
     while True:
         # receive the packet
-        data = main_con.recv(1500)  # receive the packet from the server
+        data = main_con.recv(4092)  # receive the packet from the server
         # decrypt the packet
-        data = decrypt_packet(data, dif_hel_key, encryption_type)  # decrypt the received packet
+        try:
+            data = decrypt_packet(data, dif_hel_key, encryption_type)  # decrypt the received packet
+        except Exception:
+            continue
+
         # change packet variables so it sends it to the interface from the computer
         try:
             pkt = Ether(data)
@@ -49,7 +54,16 @@ def recv_packets():
 def on_packet_sniff(pkt):
     # a function that sends the server the packets that the client sniffs from the interface
     # sent encrypted packet
-    main_con.send(encrypt_packet(bytes(pkt), dif_hel_key, encryption_type))
+#    if IP not in pkt:
+#        return
+
+#    if pkt[IP].dst == "10.0.0.69":
+#        return
+
+    try:
+        main_con.send(encrypt_packet(bytes(pkt), dif_hel_key, encryption_type))
+    except Exception:
+        print("[CLIENT] Error ENCRYPTING packet headed to Server")
 
 
 def bytes_xor(b1, b2):
@@ -66,30 +80,20 @@ def encrypt_packet(pkt, key, enc_type):
     # Cryptography library information - https://cryptography.io/en/latest/
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
-    encrypted_packet = b""
+    global fernet_obj
 
     if enc_type == "Strong":
         # Fernet encryption
+        return fernet_obj.encrypt(pkt)
 
-        # Convert diffie-hellman key into a valid fernet key
-        f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
-
-        # Converting the key into a cryptography.fernet object
-        final_key = Fernet(f_key)
-
-        # Encrypting the packet
-        encrypted_packet = final_key.encrypt(pkt)
     elif enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
         x_key = bytes(str(key), "utf-8")
 
         # xor the bytes(key and packet)
-        encrypted_packet = bytes_xor(pkt, x_key)
-    else:
-        # no encryption if no option has been chosen
-        encrypted_packet = pkt
+        return bytes_xor(pkt, x_key)
 
-    return encrypted_packet
+    return pkt
 
 
 def decrypt_packet(enc_pkt, key, enc_type):
@@ -97,32 +101,26 @@ def decrypt_packet(enc_pkt, key, enc_type):
     # Cryptography library information - https://cryptography.io/en/latest/
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
-    decrypted_packet = b""
+    global fernet_obj
 
     if enc_type == "Strong":
         # fernet encryption
-        # Convert diffie-hellman key into a valid fernet key
-        f_key = base64.urlsafe_b64encode(bytes(str(key)[:32], "utf-8"))
+        return fernet_obj.decrypt(enc_pkt)
 
-        # Converting the key into a cryptography.fernet object
-        final_key = Fernet(f_key)
-
-        # Decrypt the packet back to bytes
-        decrypted_packet = final_key.decrypt(enc_pkt)
     if enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
         x_key = bytes(str(key), "utf-8")
 
         # xor the bytes(key and packet)
-        decrypted_packet = bytes_xor(enc_pkt, x_key)
-    else:
-        # just return the packet
-        decrypted_packet = enc_pkt
+        return bytes_xor(enc_pkt, x_key)
 
-    return decrypted_packet
+    return enc_pkt
 
 
 def on_connect(server_ip, server_port):
+    global dif_hel_key
+    global fernet_obj
+
     # a function responsible for the connection with the server
     # Connect to server
     try:
@@ -165,7 +163,10 @@ def on_connect(server_ip, server_port):
     # ----Diffie-Hellman Key Exchange Start----
     secret_number = random.randint(100, 5000)
 
-    main_con.send(str(pow(public_key_base, secret_number) % public_key_modulus).encode())
+    # Calculate DH Client Number & encode it using UTF8
+    client_calc = str(pow(public_key_base, secret_number) % public_key_modulus)
+    client_calc = rsa.encrypt(client_calc.encode("utf-8"), rsa_public_key)
+    main_con.send(client_calc)
     print("[Client] DH: Sent Calculation to Server")
 
     server_calc = int(main_con.recv(1500).decode())
@@ -179,17 +180,27 @@ def on_connect(server_ip, server_port):
 
     print("[Client] DH Key Exchange Successful. Starting VPN Tunnel...")
 
+    # Create fernet object
+    if encryption_type == "Strong":
+        conv_dh = str(dif_hel_key).encode()
+        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+        f_key = base64.urlsafe_b64encode(conv_dh_padded)
+
+        # Converting the key into a cryptography.fernet object
+        fernet_obj = Fernet(f_key)
+
     # Change default packet routing to the VPN custom interface
-    os.system("route delete 0.0.0.0")
-    os.system("route add 0.0.0.0 mask 0.0.0.0 10.0.0.1")
+    set_route("10.0.0.1")
     print("VPN Turned on. This only works if ran in administrative mode")
 
     # Start receiving packets from server
     thread_recv = threading.Thread(target=recv_packets)
+    thread_recv.daemon = True
     threads["recv"] = thread_recv
     thread_recv.start()
 
     thread_sniff = threading.Thread(target=lambda: sniff(prn=on_packet_sniff, iface=vpn_interface))
+    thread_sniff.daemon = True
     threads["sniff"] = thread_sniff
     thread_sniff.start()
 
@@ -213,6 +224,8 @@ def start_cli():
 
 
 def start_client():
+    global encryption_type
+
     # start the gui
     GUI.start_gui()
     # after the user closes the gui, start CLI and questions
@@ -250,12 +263,6 @@ def start_client():
             vpn_ip = server_ip
             vpn_port = server_port
 
-        success = on_connect(server_ip=vpn_ip, server_port=vpn_port)
-
-        # If failed to connect, retry client
-        if not success:
-            continue
-
         # Encryption type determination from user
         print("The encryption types are 'Weak' and 'Strong'.")
         print("Strong - high security but worse internet connection.")
@@ -265,14 +272,20 @@ def start_client():
             # if the user chose the weak encryption
             if enc_t == "W" or enc_t == "w":
                 encryption_type = "Weak"
-                continue
+                break
             # if the user chose the strong encryption
             elif enc_t == "S" or enc_t == "s":
                 encryption_type = "Strong"
-                continue
+                break
             # if the user did not choose a valid answer
             else:
                 print("Answer not valid...")
+
+        success = on_connect(server_ip=vpn_ip, server_port=vpn_port)
+
+        # If failed to connect, retry client
+        if not success:
+            continue
 
         # If succeeded, exit loop & start CLI
         break
@@ -296,12 +309,13 @@ def command_exit(desc=False):
 
     # Close the connection to the server
     main_con.close()
-
-    # Return mask to default
-    os.system("route delete 0.0.0.0")
-    os.system(f"""netsh interface ipv4 set address name="{main_interface}" source=dhcp""")
-    os.system("ipconfig /renew")
     exit()
+
+
+def set_route(route):
+    # Return route to default
+    os.system("route delete 0.0.0.0")
+    os.system(f"route add 0.0.0.0 mask 0.0.0.0 {route}")
 
 
 def command_help(desc=False):
@@ -321,7 +335,8 @@ def command_help(desc=False):
 
 
 # Ask for Administrative
-elevate()
+#elevate()
+
 
 # Init Parameters
 with open('Client/params_client.json') as f:
@@ -344,6 +359,7 @@ vpn_mac = get_if_hwaddr(vpn_interface)
 # encryption variables
 encryption_type = "Strong"  # the default is Strong but you can change it
 dif_hel_key = 0  # public variable for the diffie hellman key
+fernet_obj = None
 
 # the server-client socket
 main_con = socket.socket()
@@ -354,3 +370,6 @@ commands = {"exit": command_exit, "help": command_help}
 
 # Start client
 start_client()
+
+# "public_key_modulus": 29962952566537595616580074691715715004471020966166863905219015471793104056642460920814497981480604316263906184613054344382075683052568773100732190701675817198195462182932917209076240513582481206090136343825410554993583246668890469709338955286428207238023518271992086860960511209511846290487309812676928740833673393588317235478023683621400408451938599052504549316739582087942516841975677097631032320460944929677827207667362551202440116275880718385985824859905900492529122669495490989816062979221701445277197457023765977676834234103232590600247983503938323988194710465088854492546408495981693179127947462979718935701783,
+#  "public_key_base": 14981476283268797808290037345857857502235510483083431952609507735896552028321230460407248990740302158131953092306527172191037841526284386550366095350837908599097731091466458604538120256791240603045068171912705277496791623334445234854669477643214103619011759135996043430480255604755923145243654906338464370416836696794158617739011841810700204225969299526252274658369791043971258420987838548815516160230472464838913603833681275601220058137940359192992912429952950246264561334747745494908031489610850722638598728511882988838417117051616295300123991751969161994097355232544427246273204247990846589563973731489859467850891

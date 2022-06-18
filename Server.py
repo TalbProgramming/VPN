@@ -68,20 +68,11 @@ def encrypt_packet(pkt, diffie_key, enc_type):
     # Cryptography library information - https://cryptography.io/en/latest/
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
+    global fernet_obj
+
     if enc_type == "Strong":
         # Fernet encryption
-
-        # Convert diffie-hellman key into a valid fernet key
-        conv_dh = str(key).encode()
-        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
-        f_key = base64.urlsafe_b64encode(conv_dh_padded)
-
-
-        # Converting the key into a cryptography.fernet object
-        final_key = Fernet(f_key)
-
-        # Encrypting the packet
-        return final_key.encrypt(pkt)
+        return fernet_obj.encrypt(pkt)
 
     elif enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
@@ -96,18 +87,11 @@ def encrypt_packet(pkt, diffie_key, enc_type):
 def decrypt_packet(enc_pkt, diffie_key, enc_type):
     # a function for decrypting a packet
 
+    global fernet_obj
+
     if enc_type == "Strong":
         # fernet encryption
-        # Convert diffie-hellman key into a valid fernet key
-        conv_dh = str(key).encode()
-        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
-        f_key = base64.urlsafe_b64encode(conv_dh_padded)
-
-        # Converting the key into a cryptography.fernet object
-        final_key = Fernet(f_key)
-
-        # Decrypt the packet back to bytes
-        return final_key.decrypt(enc_pkt)
+        return fernet_obj.decrypt(enc_pkt)
 
     elif enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
@@ -133,6 +117,7 @@ public_key_base = params["public_key_base"]
 
 # encryption variables
 encryption_type = "Strong"  # strong is default encryption
+fernet_obj = None
 
 router_ip = conf.route.route("0.0.0.0")[2]
 router_mac = srp1(Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=router_ip))[ARP].hwsrc
@@ -185,7 +170,7 @@ while True:
     secret_number = random.randint(100, 5000)
 
     # Receive DH Client Calculation
-    client_calc = con.recv(1500)
+    client_calc = con.recv(4092)
     try:
         client_calc = rsa.decrypt(client_calc, rsa_private_key)
     except Exception:
@@ -205,17 +190,36 @@ while True:
 
     # ---- Diffie-Hellman Key Exchange End----
 
+    # Set Fernet Object
+    if encryption_type == "Strong":
+        # Convert diffie-hellman key into a valid fernet key
+        conv_dh = str(dif_hel_key).encode()
+        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+        f_key = base64.urlsafe_b64encode(conv_dh_padded)
+
+        # Converting the key into a cryptography.fernet object
+        fernet_obj = Fernet(f_key)
+
     # Start thread that will receive incoming packets from WWW
     thread = threading.Thread(target=lambda: sniff(prn=recv_pkts, iface=interface))
+    thread.daemon = True
     thread.start()
 
     # When getting packet from client, send it to WWW
     while True:
-        data = con.recv(1500)
+
+        data = con.recv(4096)
+
+        if not data:
+            con.close()
+            thread.join()
+            break
+
         try:
             data = decrypt_packet(data, dif_hel_key, encryption_type)
-        except Exception:
+        except Exception as e:
             print("[SERVER] Error DECRYPTING packet coming from Client")
+            print(len(data))
             continue
 
         handle_connection()
