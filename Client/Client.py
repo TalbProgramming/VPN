@@ -106,7 +106,7 @@ def on_connect(server_ip, server_port):
 
     # Verify Signature
     try:
-        message = "AMONGUS".encode()
+        message = "AMOGUS".encode()
         rsa.verify(message, signature, rsa_public_key)
     except:
         print("[Client] RSA: Verification Failed. Restarting Client...")

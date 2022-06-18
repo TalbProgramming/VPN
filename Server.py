@@ -31,10 +31,26 @@ def handle_connection():
         #client_pkt.show()
 
         # Third stage: Send packet to WWW
-        client_pkt = decrypt_packet(client_pkt, key, encryption_type)
         sendp(client_pkt, iface=interface, verbose=False)
     except Exception as e:
         print(f"[Client -> Server]: {e}")
+
+
+# Function that receives all incoming packets from WWW
+def recv_pkts(pkt):
+
+    if IP not in pkt:
+        return
+
+    if pkt[IP].src == get_if_addr(interface):
+        return
+
+    try:
+        encrypted_packet = encrypt_packet(bytes(pkt), dif_hel_key, encryption_type)
+        con.send(encrypted_packet)
+    except:
+        print("[SERVER] Error ENCRYPTING packet headed to Client")
+        return
 
 
 def bytes_xor(b1, b2):
@@ -52,71 +68,55 @@ def encrypt_packet(pkt, diffie_key, enc_type):
     # Cryptography library information - https://cryptography.io/en/latest/
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
-    encrypted_packet = b""
-
     if enc_type == "Strong":
         # Fernet encryption
 
         # Convert diffie-hellman key into a valid fernet key
-        f_key = base64.urlsafe_b64encode(bytes(str(diffie_key)[:32], "utf-8"))
+        conv_dh = str(key).encode()
+        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+        f_key = base64.urlsafe_b64encode(conv_dh_padded)
+
 
         # Converting the key into a cryptography.fernet object
         final_key = Fernet(f_key)
 
         # Encrypting the packet
-        encrypted_packet = final_key.encrypt(pkt)
+        return final_key.encrypt(pkt)
+
     elif enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
         x_key = bytes(str(diffie_key), "utf-8")
 
         # xor the bytes(key and packet)
-        encrypted_packet = bytes_xor(pkt, x_key)
-    else:
-        # no encryption if no option has been chosen
-        encrypted_packet = pkt
+        return bytes_xor(pkt, x_key)
 
-    return encrypted_packet
+    return pkt
 
 
 def decrypt_packet(enc_pkt, diffie_key, enc_type):
     # a function for decrypting a packet
-    decrypted_packet = b""
 
     if enc_type == "Strong":
         # fernet encryption
         # Convert diffie-hellman key into a valid fernet key
-        f_key = base64.urlsafe_b64encode(bytes(str(diffie_key)[:32], "utf-8"))
+        conv_dh = str(key).encode()
+        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+        f_key = base64.urlsafe_b64encode(conv_dh_padded)
 
         # Converting the key into a cryptography.fernet object
         final_key = Fernet(f_key)
 
         # Decrypt the packet back to bytes
-        decrypted_packet = final_key.decrypt(enc_pkt)
-    if enc_type == "Weak":
+        return final_key.decrypt(enc_pkt)
+
+    elif enc_type == "Weak":
         # convert the key from integer to utf-8 bytes
         x_key = bytes(str(diffie_key), "utf-8")
 
         # xor the bytes(key and packet)
-        decrypted_packet = bytes_xor(enc_pkt, x_key)
-    else:
-        # just return the packet
-        decrypted_packet = enc_pkt
+        return bytes_xor(enc_pkt, x_key)
 
-    return decrypted_packet
-
-
-# Function that receives all incoming packets from WWW
-def recv_pkts(pkt):
-
-    if IP not in pkt:
-        return
-
-    if pkt[IP].src == get_if_addr(interface):
-        return
-
-    encrypted_packet = encrypt_packet(bytes(pkt))
-    con.send(encrypted_packet)
-
+    return enc_pkt
 
 
 print("Running server...")
@@ -156,6 +156,8 @@ while True:
 
     # ----RSA Authentication Start----
     (rsa_public_key, rsa_private_key) = rsa.newkeys(512)
+    print(rsa_public_key)
+
 
     # Send Public key to client
     con.send(rsa_public_key.save_pkcs1(format='DER'))
@@ -182,7 +184,16 @@ while True:
     # ----Diffie-Hellman Key Exchange Start----
     secret_number = random.randint(100, 5000)
 
-    client_calc = int(con.recv(1500).decode())
+    # Receive DH Client Calculation
+    client_calc = con.recv(1500)
+    try:
+        client_calc = rsa.decrypt(client_calc, rsa_private_key)
+    except Exception:
+        print("Error Decrypting DH Client Calculation using RSA Priv Key. Connection Closed")
+        con.close()
+        continue
+
+    client_calc = int(client_calc.decode("utf-8"))
     print("DH: Received Calculation from Client")
 
     con.send(str(pow(public_key_base, secret_number) % public_key_modulus).encode())
@@ -201,5 +212,10 @@ while True:
     # When getting packet from client, send it to WWW
     while True:
         data = con.recv(1500)
-        data = decrypt_packet(data, key, encryption_type)
+        try:
+            data = decrypt_packet(data, dif_hel_key, encryption_type)
+        except Exception:
+            print("[SERVER] Error DECRYPTING packet coming from Client")
+            continue
+
         handle_connection()
