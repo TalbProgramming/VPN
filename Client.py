@@ -18,7 +18,7 @@ def recv_packets():
         data = main_con.recv(4092)  # receive the packet from the server
         # decrypt the packet
         try:
-            data = decrypt_packet(data, dif_hel_key, encryption_type)  # decrypt the received packet
+            data = decrypt_packet(data)  # decrypt the received packet
         except Exception:
             continue
 
@@ -61,12 +61,12 @@ def on_packet_sniff(pkt):
     #        return
 
     try:
-        main_con.send(encrypt_packet(bytes(pkt), dif_hel_key, encryption_type))
+        main_con.send(encrypt_packet(bytes(pkt)))
     except Exception:
         print("[CLIENT] Error ENCRYPTING packet headed to Server")
 
 
-def encrypt_packet(pkt, key, enc_type):
+def encrypt_packet(pkt):
     # Encrypting a packet using the cryptography.fernet library
     # Bibliography:
     # Cryptography library information - https://cryptography.io/en/latest/
@@ -77,7 +77,7 @@ def encrypt_packet(pkt, key, enc_type):
     return fernet_obj.encrypt(pkt)
 
 
-def decrypt_packet(enc_pkt, key, enc_type):
+def decrypt_packet(enc_pkt):
     # a function for decrypting a packet
     # Cryptography library information - https://cryptography.io/en/latest/
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
@@ -190,7 +190,6 @@ def start_cli():
 
 
 def start_client():
-    global encryption_type
 
     # start the gui
     GUI.start_gui()
@@ -228,24 +227,6 @@ def start_client():
         else:
             vpn_ip = server_ip
             vpn_port = server_port
-
-        # Encryption type determination from user
-        print("The encryption types are 'Weak' and 'Strong'.")
-        print("Strong - high security but worse internet connection.")
-        print("Weak - low security but better internet connection.")
-        while True:
-            enc_t = input("Which one do you prefer? (W/S)")
-            # if the user chose the weak encryption
-            if enc_t == "W" or enc_t == "w":
-                encryption_type = "Weak"
-                break
-            # if the user chose the strong encryption
-            elif enc_t == "S" or enc_t == "s":
-                encryption_type = "Strong"
-                break
-            # if the user did not choose a valid answer
-            else:
-                print("Answer not valid...")
 
         success = on_connect(server_ip=vpn_ip, server_port=vpn_port)
 

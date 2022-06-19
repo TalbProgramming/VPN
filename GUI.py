@@ -119,6 +119,3 @@ def start_gui():
             else:
                 break
     window.close()
-
-
-start_gui()

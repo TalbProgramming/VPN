@@ -44,14 +44,14 @@ def recv_pkts(pkt):
         return
 
     try:
-        encrypted_packet = encrypt_packet(bytes(pkt), dif_hel_key, encryption_type)
+        encrypted_packet = encrypt_packet(bytes(pkt))
         con.send(encrypted_packet)
     except:
         print("[SERVER] Error ENCRYPTING packet headed to Client")
         return
 
 
-def encrypt_packet(pkt, diffie_key, enc_type):
+def encrypt_packet(pkt):
     # Encrypting a packet using the cryptography.fernet library or a Xor function
     # Bibliography:
     # Cryptography library information - https://cryptography.io/en/latest/
@@ -63,7 +63,7 @@ def encrypt_packet(pkt, diffie_key, enc_type):
     return fernet_obj.encrypt(pkt)
 
 
-def decrypt_packet(enc_pkt, diffie_key, enc_type):
+def decrypt_packet(enc_pkt):
     # a function for decrypting a packet
 
     global fernet_obj
@@ -178,7 +178,7 @@ while True:
             break
 
         try:
-            data = decrypt_packet(data, dif_hel_key, encryption_type)
+            data = decrypt_packet(data)
         except Exception as e:
             print("[SERVER] Error DECRYPTING packet coming from Client")
             print(len(data))
