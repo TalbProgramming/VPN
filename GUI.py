@@ -44,7 +44,6 @@ def start_gui():
         justification="right",
         font=long_font
     )
-    # vpn_picture = sg.Image('VPN.png', size=(300,300))
 
     # <<<<<< Stuff for the second window >>>>>> #
 
@@ -54,7 +53,7 @@ def start_gui():
         " דרך פיפ של שפת התכנות פייטון. הספריות הן ",
         justification="right",
         font=long_font
-        )
+    )
     libraries = sg.Text("Threading, scapy, binascii, json, rsa, cryptography, base64, pysimplegui",
                         justification="center",
                         font=long_font
@@ -120,3 +119,6 @@ def start_gui():
             else:
                 break
     window.close()
+
+
+start_gui()

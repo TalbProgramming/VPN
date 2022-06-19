@@ -9,7 +9,6 @@ import base64
 
 # Receive from client
 def handle_connection():
-
     try:
         client_pkt = Ether(data)
 
@@ -28,7 +27,7 @@ def handle_connection():
         if TCP in client_pkt:
             client_pkt[TCP].chksum = None
 
-        #client_pkt.show()
+        # client_pkt.show()
 
         # Third stage: Send packet to WWW
         sendp(client_pkt, iface=interface, verbose=False)
@@ -38,7 +37,6 @@ def handle_connection():
 
 # Function that receives all incoming packets from WWW
 def recv_pkts(pkt):
-
     if IP not in pkt:
         return
 
@@ -53,15 +51,6 @@ def recv_pkts(pkt):
         return
 
 
-def bytes_xor(b1, b2):
-    # a function that Xors two bytes
-    # Credit to - https://stackoverflow.com/questions/23312571/fast-xoring-bytes-in-python-3
-    parts = []
-    for b1, b2 in zip(b1, b2):
-        parts.append(bytes([b1 ^ b2]))
-    return b''.join(parts)
-
-
 def encrypt_packet(pkt, diffie_key, enc_type):
     # Encrypting a packet using the cryptography.fernet library or a Xor function
     # Bibliography:
@@ -70,37 +59,16 @@ def encrypt_packet(pkt, diffie_key, enc_type):
 
     global fernet_obj
 
-    if enc_type == "Strong":
-        # Fernet encryption
-        return fernet_obj.encrypt(pkt)
-
-    elif enc_type == "Weak":
-        # convert the key from integer to utf-8 bytes
-        x_key = bytes(str(diffie_key), "utf-8")
-
-        # xor the bytes(key and packet)
-        return bytes_xor(pkt, x_key)
-
-    return pkt
+    # Fernet encryption
+    return fernet_obj.encrypt(pkt)
 
 
 def decrypt_packet(enc_pkt, diffie_key, enc_type):
     # a function for decrypting a packet
 
     global fernet_obj
-
-    if enc_type == "Strong":
-        # fernet encryption
-        return fernet_obj.decrypt(enc_pkt)
-
-    elif enc_type == "Weak":
-        # convert the key from integer to utf-8 bytes
-        x_key = bytes(str(diffie_key), "utf-8")
-
-        # xor the bytes(key and packet)
-        return bytes_xor(enc_pkt, x_key)
-
-    return enc_pkt
+    # fernet decryption
+    return fernet_obj.decrypt(enc_pkt)
 
 
 print("Running server...")
@@ -116,7 +84,6 @@ public_key_modulus = params["public_key_modulus"]
 public_key_base = params["public_key_base"]
 
 # encryption variables
-encryption_type = "Strong"  # strong is default encryption
 fernet_obj = None
 
 router_ip = conf.route.route("0.0.0.0")[2]
@@ -135,14 +102,9 @@ while True:
     # Wait for a connection
     con, addr = main_con.accept()
 
-    # receive encryption type from client
-    encryption_type = con.recv(1500).decode()
-    print("Received encryption type.")
-
     # ----RSA Authentication Start----
     (rsa_public_key, rsa_private_key) = rsa.newkeys(512)
     print(rsa_public_key)
-
 
     # Send Public key to client
     con.send(rsa_public_key.save_pkcs1(format='DER'))
@@ -191,14 +153,14 @@ while True:
     # ---- Diffie-Hellman Key Exchange End----
 
     # Set Fernet Object
-    if encryption_type == "Strong":
-        # Convert diffie-hellman key into a valid fernet key
-        conv_dh = str(dif_hel_key).encode()
-        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
-        f_key = base64.urlsafe_b64encode(conv_dh_padded)
 
-        # Converting the key into a cryptography.fernet object
-        fernet_obj = Fernet(f_key)
+    # Convert diffie-hellman key into a valid fernet key
+    conv_dh = str(dif_hel_key).encode()
+    conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+    f_key = base64.urlsafe_b64encode(conv_dh_padded)
+
+    # Converting the key into a cryptography.fernet object
+    fernet_obj = Fernet(f_key)
 
     # Start thread that will receive incoming packets from WWW
     thread = threading.Thread(target=lambda: sniff(prn=recv_pkts, iface=interface))

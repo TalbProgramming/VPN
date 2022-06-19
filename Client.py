@@ -54,24 +54,16 @@ def recv_packets():
 def on_packet_sniff(pkt):
     # a function that sends the server the packets that the client sniffs from the interface
     # sent encrypted packet
-#    if IP not in pkt:
-#        return
+    #    if IP not in pkt:
+    #        return
 
-#    if pkt[IP].dst == "10.0.0.69":
-#        return
+    #    if pkt[IP].dst == "10.0.0.69":
+    #        return
 
     try:
         main_con.send(encrypt_packet(bytes(pkt), dif_hel_key, encryption_type))
     except Exception:
         print("[CLIENT] Error ENCRYPTING packet headed to Server")
-
-
-def bytes_xor(b1, b2):
-    # Xor bytes function - https://stackoverflow.com/questions/23312571/fast-xoring-bytes-in-python-3
-    parts = []
-    for b1, b2 in zip(b1, b2):
-        parts.append(bytes([b1 ^ b2]))
-    return b''.join(parts)
 
 
 def encrypt_packet(pkt, key, enc_type):
@@ -81,19 +73,8 @@ def encrypt_packet(pkt, key, enc_type):
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
     global fernet_obj
-
-    if enc_type == "Strong":
-        # Fernet encryption
-        return fernet_obj.encrypt(pkt)
-
-    elif enc_type == "Weak":
-        # convert the key from integer to utf-8 bytes
-        x_key = bytes(str(key), "utf-8")
-
-        # xor the bytes(key and packet)
-        return bytes_xor(pkt, x_key)
-
-    return pkt
+    # Fernet encryption
+    return fernet_obj.encrypt(pkt)
 
 
 def decrypt_packet(enc_pkt, key, enc_type):
@@ -102,19 +83,8 @@ def decrypt_packet(enc_pkt, key, enc_type):
     # Creating your own fernet key - https://stackoverflow.com/questions/44432945/generating-own-key-with-python-fernet
 
     global fernet_obj
-
-    if enc_type == "Strong":
-        # fernet encryption
-        return fernet_obj.decrypt(enc_pkt)
-
-    if enc_type == "Weak":
-        # convert the key from integer to utf-8 bytes
-        x_key = bytes(str(key), "utf-8")
-
-        # xor the bytes(key and packet)
-        return bytes_xor(enc_pkt, x_key)
-
-    return enc_pkt
+    # fernet encryption
+    return fernet_obj.decrypt(enc_pkt)
 
 
 def on_connect(server_ip, server_port):
@@ -132,10 +102,6 @@ def on_connect(server_ip, server_port):
         return False
 
     print("[Client] Connected Successfully to the Server.")
-
-    # send the server the encryption type
-    main_con.send(encryption_type.encode())
-    print("Sent Encryption type")
 
     # ----RSA Authentication Start----
     # Receive public key
@@ -181,13 +147,13 @@ def on_connect(server_ip, server_port):
     print("[Client] DH Key Exchange Successful. Starting VPN Tunnel...")
 
     # Create fernet object
-    if encryption_type == "Strong":
-        conv_dh = str(dif_hel_key).encode()
-        conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
-        f_key = base64.urlsafe_b64encode(conv_dh_padded)
 
-        # Converting the key into a cryptography.fernet object
-        fernet_obj = Fernet(f_key)
+    conv_dh = str(dif_hel_key).encode()
+    conv_dh_padded = conv_dh + bytes(32 - len(conv_dh))
+    f_key = base64.urlsafe_b64encode(conv_dh_padded)
+
+    # Converting the key into a cryptography.fernet object
+    fernet_obj = Fernet(f_key)
 
     # Change default packet routing to the VPN custom interface
     set_route("10.0.0.1")
@@ -335,7 +301,7 @@ def command_help(desc=False):
 
 
 # Ask for Administrative
-#elevate()
+# elevate()
 
 
 # Init Parameters
@@ -357,7 +323,6 @@ vpn_router_mac = "70:32:17:69:69:69"
 vpn_mac = get_if_hwaddr(vpn_interface)
 
 # encryption variables
-encryption_type = "Strong"  # the default is Strong but you can change it
 dif_hel_key = 0  # public variable for the diffie hellman key
 fernet_obj = None
 
